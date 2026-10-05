@@ -178,7 +178,7 @@ public final class NotesActivity extends Activity {
                 for (Note n : all) {
                     if (!n.category.isEmpty() && !n.deleted) categories.add(n.category);
                     if (!n.deleted) allTags.addAll(Tags.parse(n.tags));
-                    if (n.deleted == trash && (filter.isEmpty() || filter.equals(n.category))
+                    if (n.deleted == trash && Library.categoryMatches(n.category, filter)
                         && (n.title + "\n" + n.body + "\n" + n.tags).toLowerCase(Locale.ROOT).contains(query)) visible.add(n);
                 }
             }
@@ -194,6 +194,7 @@ public final class NotesActivity extends Activity {
         button("Search", () -> { search = query.getText().toString(); page = 0; library(); });
         button("Category: " + (filter.isEmpty() ? "All" : filter), () -> {
             List<String> names = new ArrayList<>(); names.add("All"); names.addAll(categories);
+            if (!categories.contains(Library.UNCATEGORIZED)) names.add(Library.UNCATEGORIZED);
             new AlertDialog.Builder(this).setTitle("Filter category").setItems(names.toArray(new String[0]), (d,i) -> {
                 filter = i == 0 ? "" : names.get(i); page = 0; library();
             }).show();
@@ -202,8 +203,8 @@ public final class NotesActivity extends Activity {
         button("Files & backups", this::files);
         button(trash ? "Back to notes" : "Trash", () -> { trash = !trash; page = 0; library(); });
         text(visible.size() + " note(s) · swipe right: category · left: actions");
-        int pages = Math.max(1, (visible.size() + 19)/20); page = Math.min(page, pages-1);
-        for (int i=page*20; i<Math.min(visible.size(), (page+1)*20); i++) {
+        int pages = Library.pageCount(visible.size()); page = Math.min(page, pages-1);
+        for (int i=page*Library.PAGE_SIZE; i<Math.min(visible.size(), (page+1)*Library.PAGE_SIZE); i++) {
             Note n = visible.get(i);
             String label = (n.todo ? (n.done ? "☑ " : "☐ ") : "") + (n.title.isEmpty() ? "Untitled" : n.title)
                 + "\n" + (n.category.isEmpty() ? "Uncategorized" : n.category);
@@ -226,6 +227,12 @@ public final class NotesActivity extends Activity {
             });
         }
         if (page>0) button("Previous page", () -> { page--; renderLibrary(); });
+        button(Library.pageLabel(page, visible.size()), () -> {
+            final int totalPages = Library.pageCount(visible.size());
+            String[] items = new String[totalPages];
+            for (int i=0; i<totalPages; i++) items[i] = Library.pageItem(i, visible.size());
+            new AlertDialog.Builder(this).setTitle("Go to page").setItems(items, (d,i) -> { page = i; renderLibrary(); }).show();
+        });
         if (page+1<pages) button("Next page", () -> { page++; renderLibrary(); });
         button("Refresh", this::library);
     }
@@ -397,8 +404,12 @@ public final class NotesActivity extends Activity {
         EditText input = new EditText(this); input.setHint("Category (empty = uncategorized)"); input.setText(n.category);
         input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(1000)});
         new AlertDialog.Builder(this).setTitle("Set category").setView(input).setNeutralButton("Existing", (d,w) -> {
-            String[] names=categories.toArray(new String[0]);
-            new AlertDialog.Builder(this).setItems(names, (dd,i) -> { n.category=names[i]; saveChange(n); }).show();
+            List<String> names=new ArrayList<>(categories);
+            if (!names.contains(Library.UNCATEGORIZED)) names.add(Library.UNCATEGORIZED);
+            final String[] items=names.toArray(new String[0]);
+            new AlertDialog.Builder(this).setItems(items, (dd,i) -> {
+                n.category=Library.UNCATEGORIZED.equals(items[i]) ? "" : items[i]; saveChange(n);
+            }).show();
         }).setNegativeButton("Cancel", null).setPositiveButton("Save", (d,w) -> { n.category=input.getText().toString().trim(); saveChange(n); }).show();
     }
     private void actions(Note n) {

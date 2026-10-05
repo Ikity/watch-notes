@@ -210,6 +210,14 @@ public final class NotesTest {
         check(Tags.filterNew(Arrays.asList(trashed),Arrays.asList(a)).size()==1,"trashed content does not block re-import");
         check(Tags.filterNew(Arrays.asList(a),Arrays.asList(b,a)).size()==1,"re-import skips existing content once");
         check(Tags.collect(Arrays.asList(a,trashed)).equals(new TreeSet<>(Arrays.asList("x","y"))),"tag collection skips trash");
+        check(Library.categoryMatches("Work",""),"empty filter matches any category");
+        check(Library.categoryMatches("","Uncategorized"),"Uncategorized filter matches empty category");
+        check(!Library.categoryMatches("Work","Uncategorized"),"Uncategorized filter hides categorized notes");
+        check(Library.categoryMatches("Work","Work"),"exact category matches");
+        check(!Library.categoryMatches("Work","Home"),"other category does not match");
+        check(Library.pageCount(0)==1 && Library.pageCount(20)==1 && Library.pageCount(21)==2,"page count from library size");
+        check(Library.pageLabel(0,45).equals("Page 1 of 3"),"page counter label");
+        check(Library.pageItem(1,45).equals("Page 2 (21–40 of 45)"),"page selector entry");
         if (args.length > 0) for (String name : new String[]{"jnote", "ex3", "ex4", "ex5", "exBashWordSel"}) {
             File example=new File(args[0],name);
             if (!example.exists()) continue;
