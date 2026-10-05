@@ -139,6 +139,19 @@ public final class NotesTest {
         check(resolved.body.contains("data:image/png;base64,AQID"),"ZIP resources resolve Joplin image IDs");
         check(resolved.body.contains(":/42ffc43de46b42d19dfb84b2b270c18b"),"unmatched links preserved");
         fails(() -> MarkdownNotes.importZip(new ByteArrayInputStream(archive("../bad.png",new byte[]{1}))),"unsafe image archive path rejected");
+        check(Tags.parse(" work, HOME ,,Work ").size()==2,"tag parse trims and dedups case-insensitively");
+        check(Tags.format(Arrays.asList("b","a","b")).equals("b, a"),"tag format preserves order without duplicates");
+        check(Tags.filter(Arrays.asList("Work","Home","hobby"),"ho").equals(Arrays.asList("hobby","Home")),"tag search filters case-insensitively");
+        check(Tags.union("work",Arrays.asList("Home","work")).equals("work, Home"),"tag union merges without duplicates");
+        Note a=new Note(); a.title="T"; a.body="B"; a.category="C"; a.tags="x, y"; a.todo=true;
+        Note b=new Note(); b.title=" T "; b.body="B"; b.category="C"; b.tags="Y, x"; b.todo=true;
+        check(Tags.fingerprint(a).equals(Tags.fingerprint(b)),"duplicate fingerprint ignores whitespace/order/case");
+        b.body="Changed";
+        check(!Tags.fingerprint(a).equals(Tags.fingerprint(b)),"fingerprint detects body change");
+        Note trashed=a.copy(); trashed.deleted=true;
+        check(Tags.filterNew(Arrays.asList(trashed),Arrays.asList(a)).size()==1,"trashed content does not block re-import");
+        check(Tags.filterNew(Arrays.asList(a),Arrays.asList(b,a)).size()==1,"re-import skips existing content once");
+        check(Tags.collect(Arrays.asList(a,trashed)).equals(new TreeSet<>(Arrays.asList("x","y"))),"tag collection skips trash");
         if (args.length > 0) for (String name : new String[]{"jnote", "ex3", "ex4", "ex5", "exBashWordSel"}) {
             File example=new File(args[0],name);
             if (!example.exists()) continue;

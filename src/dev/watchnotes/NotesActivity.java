@@ -31,6 +31,7 @@ public final class NotesActivity extends Activity {
     private Runnable unregisterBack;
     private final List<Note> visible = new ArrayList<>();
     private final Set<String> categories = new TreeSet<>();
+    private final Set<String> allTags = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
     private interface Work { String run() throws Exception; }
 
     @Override public void onCreate(Bundle state) {
@@ -172,10 +173,11 @@ public final class NotesActivity extends Activity {
         job(() -> {
             try (NotesStore store = new NotesStore(this)) {
                 List<Note> all = store.current();
-                visible.clear(); categories.clear();
+                visible.clear(); categories.clear(); allTags.clear();
                 String query = search.toLowerCase(Locale.ROOT);
                 for (Note n : all) {
                     if (!n.category.isEmpty() && !n.deleted) categories.add(n.category);
+                    if (!n.deleted) allTags.addAll(Tags.parse(n.tags));
                     if (n.deleted == trash && (filter.isEmpty() || filter.equals(n.category))
                         && (n.title + "\n" + n.body + "\n" + n.tags).toLowerCase(Locale.ROOT).contains(query)) visible.add(n);
                 }
@@ -236,6 +238,7 @@ public final class NotesActivity extends Activity {
         category = field("Category / notebook", n.category, 1);
         category.setFilters(new InputFilter[]{new InputFilter.LengthFilter(1000)});
         tags = field("Tags, comma separated", n.tags, 1); tags.setFilters(new InputFilter[]{new InputFilter.LengthFilter(4000)});
+        button("Select existing tags", () -> pickTags());
         todo = check("To-do", n.todo); done = check("Completed", n.done);
         button(n.deleted ? "Restore and save" : "Save", () -> {
             collect(); editing.deleted=false; Note draft=editing;
@@ -261,8 +264,65 @@ public final class NotesActivity extends Activity {
     }
     private void collect() {
         editing.title=title.getText().toString(); editing.body=body.getText().toString();
-        editing.category=category.getText().toString().trim(); editing.tags=tags.getText().toString().trim();
+        editing.category=category.getText().toString().trim(); editing.tags=Tags.format(Tags.parse(tags.getText().toString()));
         editing.todo=todo.isChecked(); editing.done=done.isChecked();
+    }
+    private void pickTags() {
+        collect();
+        final Set<String> selected = new LinkedHashSet<>(Tags.parse(editing.tags));
+        final List<String> source = new ArrayList<>(allTags);
+        if (source.isEmpty()) {
+            job(() -> {
+                try (NotesStore store = new NotesStore(this)) { source.addAll(Tags.collect(store.current())); }
+                return null;
+            }, () -> showTagPicker(selected, source));
+        } else showTagPicker(selected, source);
+    }
+    private void showTagPicker(Set<String> selected, List<String> source) {
+        if (isDestroyed()) return;
+        Collections.sort(source, String.CASE_INSENSITIVE_ORDER);
+        LinearLayout dialogLayout = new LinearLayout(this);
+        dialogLayout.setOrientation(LinearLayout.VERTICAL);
+        dialogLayout.setPadding(dp(8), dp(8), dp(8), dp(8));
+        EditText query = new EditText(this);
+        query.setHint("Search tags");
+        query.setContentDescription("Search tags");
+        query.setSingleLine(true);
+        dialogLayout.addView(query);
+        ListView list = new ListView(this);
+        list.setChoiceMode(ListView.CHOICE_MODE_MULTIPLE);
+        dialogLayout.addView(list);
+        final List<String> filtered = new ArrayList<>(source);
+        final android.widget.ArrayAdapter<String> adapter = new android.widget.ArrayAdapter<>(this,
+            android.R.layout.simple_list_item_multiple_choice, filtered);
+        list.setAdapter(adapter);
+        for (int i = 0; i < filtered.size(); i++) list.setItemChecked(i, selected.contains(filtered.get(i)));
+        query.addTextChangedListener(new TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
+            public void onTextChanged(CharSequence s, int a, int b, int c) { }
+            public void afterTextChanged(Editable s) {
+                for (int i = 0; i < filtered.size(); i++) {
+                    String tag = filtered.get(i);
+                    if (list.isItemChecked(i)) selected.add(tag);
+                    else selected.remove(tag);
+                }
+                filtered.clear();
+                filtered.addAll(Tags.filter(source, s.toString()));
+                adapter.notifyDataSetChanged();
+                for (int i = 0; i < filtered.size(); i++) list.setItemChecked(i, selected.contains(filtered.get(i)));
+            }
+        });
+        new AlertDialog.Builder(this).setTitle("Select tags").setView(dialogLayout)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Apply", (d, w) -> {
+                for (int i = 0; i < filtered.size(); i++) {
+                    String tag = filtered.get(i);
+                    if (list.isItemChecked(i)) selected.add(tag);
+                    else selected.remove(tag);
+                }
+                tags.setText(Tags.format(selected));
+                persistDraft();
+            }).show();
     }
     private void share(Note n) {
         Intent intent = new Intent(Intent.ACTION_SEND).setType("text/plain");
@@ -408,6 +468,7 @@ public final class NotesActivity extends Activity {
                 if (c!=null && c.moveToFirst()) name=c.getString(0);
             }
             List<Note> notes;
+            boolean markdown=false;
             try (InputStream in=getContentResolver().openInputStream(uri)) {
                 if (in==null) throw new IOException("Cannot open selected file");
                 if (name.toLowerCase(Locale.ROOT).endsWith(".db")) {
@@ -423,12 +484,21 @@ public final class NotesActivity extends Activity {
                         notes=NotesStore.readBackup(tmp);
                     } finally { tmp.delete(); }
                 }
-                else if (name.toLowerCase(Locale.ROOT).endsWith(".zip")) notes=MarkdownNotes.importZip(in);
-                else if (name.toLowerCase(Locale.ROOT).matches(".*\\.(md|markdown|txt)$")) notes=Collections.singletonList(MarkdownNotes.decode(new String(NotesSync.read(in,1500000),StandardCharsets.UTF_8),name));
+                else if (name.toLowerCase(Locale.ROOT).endsWith(".zip")) { notes=MarkdownNotes.importZip(in); markdown=true; }
+                else if (name.toLowerCase(Locale.ROOT).matches(".*\\.(md|markdown|txt)$")) { notes=Collections.singletonList(MarkdownNotes.decode(new String(NotesSync.read(in,1500000),StandardCharsets.UTF_8),name)); markdown=true; }
                 else throw new IOException("Choose .md, .txt, .zip or a Watch Notes .db file (JEX is not supported)");
             }
-            try (NotesStore store=new NotesStore(this)) { store.importNotes(notes); }
-            return "Imported " + notes.size() + " note/revision record(s). Markdown creates new notes; database backups merge history.";
+            try (NotesStore store=new NotesStore(this)) {
+                if (markdown) {
+                    List<Note> fresh=Tags.filterNew(store.current(), notes);
+                    int skipped=notes.size()-fresh.size();
+                    store.importNotes(fresh);
+                    if (fresh.isEmpty()) return "No new notes: " + skipped + " duplicate(s) already exist.";
+                    return "Imported " + fresh.size() + " new note(s)" + (skipped>0 ? ", skipped " + skipped + " duplicate(s)." : ".");
+                }
+                store.importNotes(notes);
+                return "Imported " + notes.size() + " note/revision record(s). Database backups merge history.";
+            }
         }, () -> { library(); queueSync(); });
         if (request==11) {
             final String kind=exportKind, note=exportNote;

@@ -14,8 +14,9 @@ The watch and phone builds share a package ID and signing key so Google Wear OS 
 ## Features
 
 - Create and edit text/Markdown notes on either device, including offline.
-- Title, body, notebook/category, comma-separated tags, to-do and completion status.
+- Title, body, notebook/category, comma-separated tags, to-do and completion status. The editor has **Select existing tags** under the tag field, with a search box for filtering existing tags.
 - Search note titles, bodies and tags; category filtering; 20-note library pages.
+- Markdown re-imports skip notes whose title, body, category, tags and to-do state already exist, and report how many duplicates were skipped.
 - Swipe **right** on a note to set its category; swipe **left** for actions. Long-press offers the same actions without swiping. Use the middle of a watch row so the system's edge-back gesture does not take priority.
 - Trash and restore; complete revision history, including concurrent offline edits.
 - Local editor drafts persisted when leaving the app, opening a picker or rotating.
