@@ -95,6 +95,7 @@ public final class MarkdownPreview {
         Document fragment = Jsoup.parseBodyFragment(RENDERER.render(PARSER.parse(note.body)));
         highlights(fragment.body());
         tableOfContents(fragment);
+        CodeHighlight.highlightBlocks(fragment);
         // The share only contains :/ID references, not the corresponding private Joplin files.
         // Shared HTML sometimes includes public HTTPS alternatives in srcset.
         for (Element img : fragment.select("img")) {
@@ -109,8 +110,9 @@ public final class MarkdownPreview {
         }
         for (Element task : fragment.select("input[type=checkbox]")) task.attr("disabled", "");
         Safelist allowed = Safelist.relaxed()
-            .addTags("s", "del", "mark", "ins", "sub", "sup", "hr", "input", "section", "div", "span", "details", "summary", "figure", "figcaption", "nav")
+            .addTags("s", "del", "mark", "ins", "sub", "sup", "hr", "input", "section", "div", "span", "details", "summary", "figure", "figcaption", "nav", "font")
             .addAttributes("input", "type", "checked", "disabled")
+            .addAttributes("font", "color")
             .addProtocols("img", "src", "https", "data");
         for (int level = 1; level <= 6; level++) allowed.addAttributes("h" + level, "id");
         // Disable remote resource loading for everything except validated <img src>.

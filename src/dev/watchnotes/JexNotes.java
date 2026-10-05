@@ -25,20 +25,50 @@ public final class JexNotes {
     private static final int MAX_ENTRIES = 3000;
     private static final int MAX_TEXT_ENTRY = 1500000;
     private static final long MAX_TEXT_TOTAL = 16L * 1024 * 1024;
-    private static final int MAX_IMAGE_KEEP = 120000;
+    private static final int MAX_RESOURCE_KEEP = 262144;
+    private static final long MAX_IMAGES_TOTAL = 16L * 1024 * 1024;
+    /** Tiny images embed byte-for-byte; larger ones are downscaled on Android. */
+    static final int TINY_EMBED = 32768;
+    static final long TINY_BUDGET = 98304;
     private static final long MAX_BINARY_SKIP = 256L * 1024 * 1024;
     private static final long MAX_STREAM_TOTAL = 256L * 1024 * 1024;
 
     private JexNotes() { }
 
+    /** Notes keep {@code :/id} references; binaries are returned for Android downsampling. */
+    public static final class Import {
+        public final List<Note> notes;
+        public final Map<String, byte[]> images;
+        Import(List<Note> notes, Map<String, byte[]> images) { this.notes = notes; this.images = images; }
+    }
+
     public static List<Note> importJex(InputStream input) throws Exception {
+        Import detailed = importJexDetailed(input);
+        for (Note n : detailed.notes) {
+            long embedded = 0;
+            for (Map.Entry<String, byte[]> image : detailed.images.entrySet()) {
+                if (!n.body.contains(":/" + image.getKey())) continue;
+                byte[] bytes = image.getValue();
+                if (bytes.length > TINY_EMBED) continue;
+                if (embedded + bytes.length > TINY_BUDGET) continue;
+                String type = imageType(bytes);
+                if (type == null) continue;
+                String candidate = n.body.replace(":/" + image.getKey(),
+                    "data:image/" + type + ";base64," + Base64.getEncoder().encodeToString(bytes));
+                if (candidate.length() <= 200000) { n.body = candidate; embedded += bytes.length; }
+            }
+        }
+        return detailed.notes;
+    }
+
+    public static Import importJexDetailed(InputStream input) throws Exception {
         Map<String, Folder> folders = new HashMap<>();
         Map<String, String> tagTitles = new HashMap<>();
         Map<String, List<String>> noteTags = new HashMap<>();
         Map<String, String> resourceMime = new HashMap<>();
         Map<String, byte[]> images = new HashMap<>();
         List<RawNote> raws = new ArrayList<>();
-        long textTotal = 0, streamed = 0;
+        long textTotal = 0, streamed = 0, imagesTotal = 0;
         int entries = 0;
         TarReader tar = new TarReader(input);
         for (;;) {
@@ -82,8 +112,10 @@ public final class JexNotes {
                 String extension = base.contains(".") ? base.substring(base.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT) : "";
                 boolean imageExt = extension.equals("png") || extension.equals("jpg") || extension.equals("jpeg")
                     || extension.equals("gif") || extension.equals("webp");
-                if (id.matches("(?i)[0-9a-f]{32}") && imageExt && entry.size <= MAX_IMAGE_KEEP && !images.containsKey(id.toLowerCase(Locale.ROOT))) {
+                if (id.matches("(?i)[0-9a-f]{32}") && imageExt && entry.size <= MAX_RESOURCE_KEEP
+                        && !images.containsKey(id.toLowerCase(Locale.ROOT)) && imagesTotal + entry.size <= MAX_IMAGES_TOTAL) {
                     images.put(id.toLowerCase(Locale.ROOT), tar.readData());
+                    imagesTotal += entry.size;
                     streamed += entry.size;
                 } else {
                     streamed += tar.skipData(MAX_BINARY_SKIP);
@@ -111,19 +143,11 @@ public final class JexNotes {
             n.todo = raw.todo; n.done = raw.done;
             if (raw.created > 0) n.created = raw.created;
             if (raw.updated > 0) n.updated = raw.updated;
-            for (Map.Entry<String, byte[]> image : images.entrySet()) {
-                String mime = resourceMime.get(image.getKey());
-                if (mime != null && !mime.toLowerCase(Locale.ROOT).startsWith("image/")) continue;
-                String candidate = n.body.replace(":/" + image.getKey(),
-                    "data:image/" + guessImageType(image.getValue()) + ";base64,"
-                        + Base64.getEncoder().encodeToString(image.getValue()));
-                if (candidate.length() <= 200000) n.body = candidate;
-            }
             n.validate();
             notes.add(n);
         }
         if (notes.isEmpty()) throw new IOException("Archive contains no importable notes");
-        return notes;
+        return new Import(notes, images);
     }
 
     private static String truncate(String value, int max) {
@@ -153,13 +177,15 @@ public final class JexNotes {
         return String.join("/", parts);
     }
 
-    private static String guessImageType(byte[] bytes) {
+    /** Image format by magic bytes, or null when the bytes are not a supported image. */
+    static String imageType(byte[] bytes) {
+        if (bytes == null) return null;
         if (bytes.length >= 8 && bytes[0] == (byte) 0x89 && bytes[1] == 'P' && bytes[2] == 'N' && bytes[3] == 'G') return "png";
         if (bytes.length >= 3 && bytes[0] == (byte) 0xFF && bytes[1] == (byte) 0xD8 && bytes[2] == (byte) 0xFF) return "jpeg";
         if (bytes.length >= 6 && bytes[0] == 'G' && bytes[1] == 'I' && bytes[2] == 'F') return "gif";
         if (bytes.length >= 12 && bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F'
                 && bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P') return "webp";
-        return "png";
+        return null;
     }
 
     private static int parseInt(String value, int fallback) {

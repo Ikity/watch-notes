@@ -96,7 +96,10 @@ public final class NotesActivity extends Activity {
             throw new IOException("Supported images: PNG, JPEG, GIF, WebP");
         try (InputStream in = getContentResolver().openInputStream(uri)) {
             byte[] bytes = NotesSync.read(in, 120000);
-            String result = "![Shared image](data:" + type + ";base64," + android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP) + ")";
+            String dataUri = ImageDownscale.original(bytes);
+            if (dataUri == null) dataUri = ImageDownscale.downscaled(bytes);
+            if (dataUri == null) throw new IOException("Image unsuitable (unsupported format or too large)");
+            String result = "![Shared image](" + dataUri + ")";
             if (result.length() > 190000) throw new IOException("Image exceeds note limit");
             return result;
         }
@@ -359,11 +362,18 @@ public final class NotesActivity extends Activity {
                 return true;
             }
         });
-        web.loadDataWithBaseURL(null, MarkdownPreview.html(n, images), "text/html", "UTF-8", null);
         web.setMinimumHeight(dp(watch ? 240 : 480));
         layout.addView(web);
         web.setOnLongClickListener(v -> { imageOptions(n); return true; });
         button("Back to editor", () -> editor(n));
+        status.setText("Loading Markdown preview…");
+        final String[] html = new String[1];
+        final boolean showImages = images;
+        job(() -> { html[0] = MarkdownPreview.html(n, showImages); return null; }, () -> {
+            if (!screen.equals("preview")) return;
+            status.setText("");
+            web.loadDataWithBaseURL(null, html[0], "text/html", "UTF-8", null);
+        });
     }
     private void nativePreview(Note n, boolean images) {
         TextView rendered = text("Loading Markdown preview…");
@@ -444,7 +454,7 @@ public final class NotesActivity extends Activity {
         try {
             android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
             return "Watch Notes v" + info.versionName + " (" + info.versionCode + ")";
-        } catch (Exception e) { return "Watch Notes v1.6 (7)"; }
+        } catch (Exception e) { return "Watch Notes v1.7 (8)"; }
     }
     private void files() {
         screen="files"; base("Files & backups");
@@ -505,7 +515,11 @@ public final class NotesActivity extends Activity {
                     } finally { tmp.delete(); }
                 }
                 else if (name.toLowerCase(Locale.ROOT).endsWith(".zip")) { notes=MarkdownNotes.importZip(in); markdown=true; }
-                else if (name.toLowerCase(Locale.ROOT).endsWith(".jex")) { notes=JexNotes.importJex(in); markdown=true; }
+                else if (name.toLowerCase(Locale.ROOT).endsWith(".jex")) {
+                    JexNotes.Import detailed=JexNotes.importJexDetailed(in);
+                    for (Note note : detailed.notes) note.body=ImageDownscale.embedAll(note.body, detailed.images);
+                    notes=detailed.notes; markdown=true;
+                }
                 else if (name.toLowerCase(Locale.ROOT).matches(".*\\.(md|markdown|txt)$")) { notes=Collections.singletonList(MarkdownNotes.decode(new String(NotesSync.read(in,1500000),StandardCharsets.UTF_8),name)); markdown=true; }
                 else throw new IOException("Choose .md, .txt, .zip, .jex or a Watch Notes .db file");
             }
