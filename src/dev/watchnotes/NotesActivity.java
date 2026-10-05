@@ -442,7 +442,7 @@ public final class NotesActivity extends Activity {
         try {
             android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
             return "Watch Notes v" + info.versionName + " (" + info.versionCode + ")";
-        } catch (Exception e) { return "Watch Notes v1.4 (5)"; }
+        } catch (Exception e) { return "Watch Notes v1.5 (6)"; }
     }
     private void files() {
         screen="files"; base("Files & backups");

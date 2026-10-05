@@ -209,7 +209,7 @@ public final class JexNotes {
         return raw;
     }
 
-    private static final class RawItem {
+    static final class RawItem {
         String title = "";
         String body = "";
         final Map<String, String> props = new HashMap<>();
@@ -226,7 +226,14 @@ public final class JexNotes {
         for (int i = lines.length - 1; i >= 0; i--) {
             if (lines[i].trim().isEmpty()) { end = i; break; }
         }
-        if (end < 0) throw new IOException("Invalid Joplin item (missing metadata): " + filename);
+        if (end < 0) {
+            // Items without title or body (such as tag links) are metadata only.
+            end = 0;
+            List<String> shifted = new ArrayList<>();
+            shifted.add("");
+            Collections.addAll(shifted, lines);
+            lines = shifted.toArray(new String[0]);
+        }
         RawItem item = new RawItem();
         for (int i = end + 1; i < lines.length; i++) {
             if (lines[i].trim().isEmpty()) continue;

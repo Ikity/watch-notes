@@ -197,6 +197,7 @@ public final class NotesTest {
         fails(() -> JexNotes.importJex(new ByteArrayInputStream(tar(Collections.singletonMap("../evil.md",raw("E","b","id: 44444444444444444444444444444444","type_: 1").getBytes(StandardCharsets.UTF_8))))),"JEX traversal entry rejected");
         fails(() -> JexNotes.importJex(new ByteArrayInputStream("not a tar at all............................".getBytes(StandardCharsets.UTF_8))),"non-tar rejected");
         fails(() -> JexNotes.importJex(new ByteArrayInputStream(tar(Collections.singletonMap("empty.md","# no props\n".getBytes(StandardCharsets.UTF_8))))),"JEX entry without metadata rejected");
+        check(JexNotes.parseRaw("id: 55555555555555555555555555555555\ntype_: 6","link.md").props.get("type_").equals("6"),"JEX props-only item (tag links) accepted");
         check(Tags.parse(" work, HOME ,,Work ").size()==2,"tag parse trims and dedups case-insensitively");
         check(Tags.format(Arrays.asList("b","a","b")).equals("b, a"),"tag format preserves order without duplicates");
         check(Tags.filter(Arrays.asList("Work","Home","hobby"),"ho").equals(Arrays.asList("hobby","Home")),"tag search filters case-insensitively");
