@@ -37,6 +37,12 @@ public final class StoreInstrumentation extends Instrumentation {
         NativePreview.Prepared hidden=NativePreview.prepare(preview,false);
         check(hidden.images.isEmpty() && !hidden.html.contains("<img"),"watch hide-images mode needs no image or WebView");
         check(NativePreview.render(c,hidden).toString().contains("hidden"),"native watch preview displays hidden-image placeholder");
+        Bitmap large=Bitmap.createBitmap(800, 600, Bitmap.Config.ARGB_8888);
+        ByteArrayOutputStream big=new ByteArrayOutputStream();
+        large.compress(Bitmap.CompressFormat.PNG, 100, big); large.recycle();
+        Note downsample=new Note(); downsample.body="![Big](data:image/png;base64," + Base64.encodeToString(big.toByteArray(), Base64.NO_WRAP) + ")";
+        NativePreview.Prepared scaled=NativePreview.prepare(downsample,true);
+        check(scaled.images.size()==1,"watch preview downsamples large images instead of dropping them");
         String aName="notes-test-a.db", bName="notes-test-b.db";
         c.deleteDatabase(aName); c.deleteDatabase(bName);
         File snapshot=new File(c.getCacheDir(),"notes-test-snapshot.db");

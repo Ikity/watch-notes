@@ -64,12 +64,14 @@ final class NativePreview {
                 BitmapFactory.Options bounds = new BitmapFactory.Options(); bounds.inJustDecodeBounds = true;
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.length, bounds);
                 if (bounds.outWidth <= 0 || bounds.outHeight <= 0) continue;
+                if ((long) bounds.outWidth * bounds.outHeight > 16L * 1024 * 1024) continue;
                 BitmapFactory.Options sample = new BitmapFactory.Options();
+                sample.inSampleSize = 1;
                 while ((bounds.outWidth / sample.inSampleSize > 512 || bounds.outHeight / sample.inSampleSize > 512)
-                        && sample.inSampleSize < 4096) sample.inSampleSize *= 2;
+                        && sample.inSampleSize < 256) sample.inSampleSize *= 2;
                 Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, sample);
                 if (bitmap != null) loaded.put(src, bitmap);
-            } catch (Exception ignored) { /* The text preview stays available when an image cannot load. */ }
+            } catch (Throwable ignored) { /* The text preview stays available when an image cannot load. */ }
         }
         return new Prepared(doc.body().html(), loaded);
     }
@@ -99,7 +101,7 @@ final class NativePreview {
             (int)(context.getResources().getDisplayMetrics().density * 300)));
         return Html.fromHtml(prepared.html, Html.FROM_HTML_MODE_COMPACT, src -> {
             Bitmap bitmap = prepared.images.get(src);
-            if (bitmap == null) {
+            if (bitmap == null || bitmap.isRecycled()) {
                 Drawable placeholder = new ColorDrawable(0xff555555);
                 placeholder.setBounds(0, 0, 24, 24); return placeholder;
             }

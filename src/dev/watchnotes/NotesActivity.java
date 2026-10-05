@@ -342,25 +342,10 @@ public final class NotesActivity extends Activity {
         screen="preview"; base("Markdown preview");
         boolean images = getSharedPreferences("display", 0).getBoolean("images", true);
         text("Long-press the preview to turn image rendering " + (images ? "off" : "on") + ". Joplin :/ images need their resource files.");
-        if (watch) {
-            TextView rendered = text("Loading Markdown preview…");
-            rendered.setTextSize(16);
-            rendered.setMinHeight(dp(200));
-            rendered.setOnLongClickListener(v -> { imageOptions(n); return true; });
-            button(images ? "Hide images" : "Show images", () -> setImages(n, !images));
-            button("Back to editor", () -> editor(n));
-            final NativePreview.Prepared[] ready = new NativePreview.Prepared[1];
-            job(() -> { ready[0] = NativePreview.prepare(n, images); return null; }, () -> {
-                if (!screen.equals("preview")) return;
-                try { rendered.setText(NativePreview.render(this, ready[0])); }
-                catch (RuntimeException e) {
-                    rendered.setText(n.body);
-                    message("Formatted preview unavailable; showing Markdown source");
-                }
-            });
-            return;
-        }
-        WebView web = new WebView(this);
+        if (watch) { nativePreview(n, images); return; }
+        final WebView web;
+        try { web = new WebView(this); }
+        catch (RuntimeException e) { nativePreview(n, images); return; }
         web.getSettings().setJavaScriptEnabled(false);
         web.getSettings().setAllowFileAccess(false);
         web.getSettings().setAllowContentAccess(false);
@@ -379,6 +364,23 @@ public final class NotesActivity extends Activity {
         layout.addView(web);
         web.setOnLongClickListener(v -> { imageOptions(n); return true; });
         button("Back to editor", () -> editor(n));
+    }
+    private void nativePreview(Note n, boolean images) {
+        TextView rendered = text("Loading Markdown preview…");
+        rendered.setTextSize(16);
+        rendered.setMinHeight(dp(200));
+        rendered.setOnLongClickListener(v -> { imageOptions(n); return true; });
+        button(images ? "Hide images" : "Show images", () -> setImages(n, !images));
+        button("Back to editor", () -> editor(n));
+        final NativePreview.Prepared[] ready = new NativePreview.Prepared[1];
+        job(() -> { ready[0] = NativePreview.prepare(n, images); return null; }, () -> {
+            if (!screen.equals("preview")) return;
+            try { rendered.setText(NativePreview.render(this, ready[0])); }
+            catch (RuntimeException e) {
+                rendered.setText(n.body);
+                message("Formatted preview unavailable; showing Markdown source");
+            }
+        });
     }
     private void imageOptions(Note n) {
         new AlertDialog.Builder(this).setTitle("Image rendering")
@@ -442,7 +444,7 @@ public final class NotesActivity extends Activity {
         try {
             android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
             return "Watch Notes v" + info.versionName + " (" + info.versionCode + ")";
-        } catch (Exception e) { return "Watch Notes v1.5 (6)"; }
+        } catch (Exception e) { return "Watch Notes v1.6 (7)"; }
     }
     private void files() {
         screen="files"; base("Files & backups");
