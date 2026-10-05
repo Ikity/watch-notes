@@ -427,8 +427,15 @@ public final class NotesActivity extends Activity {
             button("Back to note", () -> editor(editing != null ? editing : n));
         });
     }
+    private String appVersion() {
+        try {
+            android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+            return "Watch Notes v" + info.versionName + " (" + info.versionCode + ")";
+        } catch (Exception e) { return "Watch Notes v1.3 (4)"; }
+    }
     private void files() {
         screen="files"; base("Files & backups");
+        text(appVersion());
         button("Export notes for Joplin (.zip)", () -> createFile("zip", "application/zip", "watch-notes-markdown.zip"));
         button("Export local database", () -> createFile("db", "application/vnd.sqlite3", "notes.db"));
         if (watch) button("Send database to phone", () -> job(() -> { NotesSync.sendDatabase(this); return "Database queued for phone. On phone: Sync now → Files & backups → Save watch database."; }, null));
