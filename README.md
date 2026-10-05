@@ -26,7 +26,7 @@ The watch and phone builds share a package ID and signing key so Google Wear OS 
 - Import Markdown/plain text, zipped Markdown directories, and Watch Notes SQLite backups.
 - Joplin interchange using **Markdown + Front Matter**.
 - Receive Joplin Android **Share → Watch Notes Companion** notes directly; share notes back through the Android chooser.
-- CommonMark preview with Joplin-style tables, nested lists, task lists, strikethrough, footnotes, links, fenced code with syntax highlighting (Java/C/C++/Arduino/Python/Bash/SQL/JS/HTML/JSON and more), sanitized inline HTML, and images. Long-press a note or its preview to show/hide images on that device.
+- CommonMark preview with Joplin-style tables, nested lists, task lists, strikethrough, footnotes, links, fenced code with syntax highlighting (Java/C/C++/Arduino/Python/Bash/SQL/JS/HTML/JSON and more), sanitized inline HTML, and images. Long-press an image to zoom it; long-press elsewhere (or the preview) to show/hide images on that device.
 
 The phone displays Markdown in WebView. The watch uses a **native TextView/Html preview**, so it works on Wear OS watches without a WebView provider. The watch converts tables into readable rows and loads up to four small/downsampled images per preview in a background task (2500 ms network timeouts and a 256 KB limit for each downloaded image). When an image is unavailable it remains a placeholder; use **Hide images** to show text without downloads. Both long-press and a visible button can toggle watch images.
 

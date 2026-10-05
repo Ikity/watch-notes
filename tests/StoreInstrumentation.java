@@ -43,6 +43,11 @@ public final class StoreInstrumentation extends Instrumentation {
         Note downsample=new Note(); downsample.body="![Big](data:image/png;base64," + Base64.encodeToString(big.toByteArray(), Base64.NO_WRAP) + ")";
         NativePreview.Prepared scaled=NativePreview.prepare(downsample,true);
         check(scaled.images.size()==1,"watch preview downsamples large images instead of dropping them");
+        String zoomSrc=scaled.images.keySet().iterator().next();
+        Bitmap zoomed=NativePreview.loadBitmap(zoomSrc,2048);
+        check(zoomed != null && zoomed.getWidth() == 800 && zoomed.getHeight() == 600,"zoom loader keeps full image resolution");
+        zoomed.recycle();
+        check(NativePreview.loadBitmap(null,2048)==null && NativePreview.loadBitmap(":/missing",2048)==null,"zoom loader rejects unavailable images");
         String aName="notes-test-a.db", bName="notes-test-b.db";
         c.deleteDatabase(aName); c.deleteDatabase(bName);
         File snapshot=new File(c.getCacheDir(),"notes-test-snapshot.db");

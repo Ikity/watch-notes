@@ -3,6 +3,7 @@ package dev.watchnotes;
 import android.app.*;
 import android.content.*;
 import android.database.Cursor;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.*;
 import android.provider.OpenableColumns;
@@ -22,7 +23,7 @@ public final class NotesActivity extends Activity {
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private LinearLayout layout;
     private TextView status;
-    private Note editing;
+    private Note editing, previewing;
     private EditText title, body, category, tags;
     private CheckBox todo, done;
     private String search = "", filter = "", screen = "list", exportKind = "", exportNote = "";
@@ -342,9 +343,9 @@ public final class NotesActivity extends Activity {
         catch (ActivityNotFoundException e) { message("No app available to receive notes"); }
     }
     private void preview(Note n) {
-        screen="preview"; base("Markdown preview");
+        screen="preview"; previewing=n; base("Markdown preview");
         boolean images = getSharedPreferences("display", 0).getBoolean("images", true);
-        text("Long-press the preview to turn image rendering " + (images ? "off" : "on") + ". Joplin :/ images need their resource files.");
+        text("Long-press an image to zoom it; long-press elsewhere to turn image rendering " + (images ? "off" : "on") + ". Joplin :/ images need their resource files.");
         if (watch) { nativePreview(n, images); return; }
         final WebView web;
         try { web = new WebView(this); }
@@ -364,7 +365,17 @@ public final class NotesActivity extends Activity {
         });
         web.setMinimumHeight(dp(watch ? 240 : 480));
         layout.addView(web);
-        web.setOnLongClickListener(v -> { imageOptions(n); return true; });
+        web.setOnLongClickListener(v -> {
+            String src = null;
+            try {
+                WebView.HitTestResult hit = web.getHitTestResult();
+                if (hit != null && (hit.getType() == WebView.HitTestResult.IMAGE_TYPE
+                        || hit.getType() == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE)) src = hit.getExtra();
+            } catch (Exception ignored) { }
+            if (src != null && (src.startsWith("data:image/") || src.startsWith("https://"))) zoomImage(n, src);
+            else imageOptions(n);
+            return true;
+        });
         button("Back to editor", () -> editor(n));
         status.setText("Loading Markdown preview…");
         final String[] html = new String[1];
@@ -379,7 +390,12 @@ public final class NotesActivity extends Activity {
         TextView rendered = text("Loading Markdown preview…");
         rendered.setTextSize(16);
         rendered.setMinHeight(dp(200));
-        rendered.setOnLongClickListener(v -> { imageOptions(n); return true; });
+        final float[] touch = new float[2];
+        rendered.setOnTouchListener((v, e) -> {
+            if (e.getActionMasked() == MotionEvent.ACTION_DOWN) { touch[0] = e.getX(); touch[1] = e.getY(); }
+            return false;
+        });
+        rendered.setOnLongClickListener(v -> { longPressPreview(n, rendered, touch[0], touch[1]); return true; });
         button(images ? "Hide images" : "Show images", () -> setImages(n, !images));
         button("Back to editor", () -> editor(n));
         final NativePreview.Prepared[] ready = new NativePreview.Prepared[1];
@@ -390,6 +406,45 @@ public final class NotesActivity extends Activity {
                 rendered.setText(n.body);
                 message("Formatted preview unavailable; showing Markdown source");
             }
+        });
+    }
+    private void longPressPreview(Note n, TextView rendered, float x, float y) {
+        String src = imageAt(rendered, x, y);
+        if (src == null) { imageOptions(n); return; }
+        new AlertDialog.Builder(this).setTitle("Image")
+            .setItems(new String[]{"Zoom image", "Show images", "Hide images"}, (d, which) -> {
+                if (which == 0) zoomImage(n, src);
+                else setImages(n, which == 1);
+            }).show();
+    }
+    private static String imageAt(TextView view, float x, float y) {
+        try {
+            CharSequence text = view.getText();
+            if (!(text instanceof Spanned)) return null;
+            int offset = view.getOffsetForPosition(x, y);
+            if (offset < 0 || offset > text.length()) return null;
+            Spanned spanned = (Spanned) text;
+            android.text.style.ImageSpan[] spans = spanned.getSpans(offset, offset, android.text.style.ImageSpan.class);
+            if (spans.length == 0 && offset > 0) spans = spanned.getSpans(offset - 1, offset, android.text.style.ImageSpan.class);
+            if (spans.length == 0) return null;
+            String src = spans[0].getSource();
+            return src != null && (src.startsWith("data:image/") || src.startsWith("https://")) ? src : null;
+        } catch (Exception e) { return null; }
+    }
+    private void zoomImage(Note n, String src) {
+        screen="zoom"; base("Image zoom");
+        ImageView view = new ImageView(this);
+        view.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        view.setAdjustViewBounds(true);
+        view.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        view.setMinimumHeight(dp(200));
+        layout.addView(view);
+        button("Back to preview", () -> preview(n));
+        final Bitmap[] bitmap = new Bitmap[1];
+        job(() -> { bitmap[0] = NativePreview.loadBitmap(src, 2048); return null; }, () -> {
+            if (!screen.equals("zoom")) return;
+            if (bitmap[0] == null || bitmap[0].isRecycled()) { message("Image unavailable"); preview(n); return; }
+            view.setImageBitmap(bitmap[0]);
         });
     }
     private void imageOptions(Note n) {
@@ -454,7 +509,7 @@ public final class NotesActivity extends Activity {
         try {
             android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
             return "Watch Notes v" + info.versionName + " (" + info.versionCode + ")";
-        } catch (Exception e) { return "Watch Notes v1.7 (8)"; }
+        } catch (Exception e) { return "Watch Notes v1.8 (9)"; }
     }
     private void files() {
         screen="files"; base("Files & backups");
@@ -564,6 +619,7 @@ public final class NotesActivity extends Activity {
                 collect(); saveChange(editing);
             }).setNegativeButton("Discard draft", (d,w) -> { clearDraft(); library(); }).setNeutralButton("Keep editing",null).show();
         } else if (screen.equals("preview") && editing != null) editor(editing);
+        else if (screen.equals("zoom") && previewing != null) preview(previewing);
         else if (screen.equals("history") && editing != null) editor(editing);
         else if (!screen.equals("list")) library(); else finish();
     }

@@ -53,27 +53,35 @@ final class NativePreview {
             String src = image.attr("src");
             if (loaded.containsKey(src)) continue;
             attempted++;
-            try {
-                byte[] bytes;
-                if (src.startsWith("data:image/")) {
-                    bytes = Base64.decode(src.substring(src.indexOf(',') + 1), Base64.DEFAULT);
-                    if (bytes.length > 160000) continue;
-                } else if (src.startsWith("https://")) {
-                    bytes = download(src);
-                } else continue;
-                BitmapFactory.Options bounds = new BitmapFactory.Options(); bounds.inJustDecodeBounds = true;
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.length, bounds);
-                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) continue;
-                if ((long) bounds.outWidth * bounds.outHeight > 16L * 1024 * 1024) continue;
-                BitmapFactory.Options sample = new BitmapFactory.Options();
-                sample.inSampleSize = 1;
-                while ((bounds.outWidth / sample.inSampleSize > 512 || bounds.outHeight / sample.inSampleSize > 512)
-                        && sample.inSampleSize < 256) sample.inSampleSize *= 2;
-                Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, sample);
-                if (bitmap != null) loaded.put(src, bitmap);
-            } catch (Throwable ignored) { /* The text preview stays available when an image cannot load. */ }
+            Bitmap bitmap = loadBitmap(src, 512);
+            if (bitmap != null) loaded.put(src, bitmap);
         }
         return new Prepared(doc.body().html(), loaded);
+    }
+
+    /** Decode one image for display; worker thread only. Null when unavailable. */
+    static Bitmap loadBitmap(String src, int maxDim) {
+        try {
+            byte[] bytes;
+            if (src != null && src.startsWith("data:image/")) {
+                int comma = src.indexOf(',');
+                if (comma < 0) return null;
+                bytes = Base64.decode(src.substring(comma + 1), Base64.DEFAULT);
+                if (bytes.length > 160000) return null;
+            } else if (src != null && src.startsWith("https://")) {
+                bytes = download(src);
+            } else return null;
+            BitmapFactory.Options bounds = new BitmapFactory.Options(); bounds.inJustDecodeBounds = true;
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.length, bounds);
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null;
+            if ((long) bounds.outWidth * bounds.outHeight > 16L * 1024 * 1024) return null;
+            BitmapFactory.Options sample = new BitmapFactory.Options();
+            sample.inSampleSize = 1;
+            while ((bounds.outWidth / sample.inSampleSize > maxDim || bounds.outHeight / sample.inSampleSize > maxDim)
+                    && sample.inSampleSize < 256) sample.inSampleSize *= 2;
+            return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, sample);
+        } catch (Throwable ignored) { /* The text preview stays available when an image cannot load. */ }
+        return null;
     }
 
     private static byte[] download(String source) throws IOException {
