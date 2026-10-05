@@ -23,6 +23,31 @@ public final class NotesTest {
         try (ZipOutputStream zip=new ZipOutputStream(out)) { zip.putNextEntry(new ZipEntry(name)); zip.write(body); zip.closeEntry(); }
         return out.toByteArray();
     }
+    private static String raw(String title, String body, String... props) {
+        StringBuilder s=new StringBuilder(title).append("\n\n").append(body).append("\n\n");
+        for (String p : props) s.append(p).append("\n");
+        return s.toString();
+    }
+    private static byte[] tar(Map<String,byte[]> files) throws Exception {
+        ByteArrayOutputStream out=new ByteArrayOutputStream();
+        for (Map.Entry<String,byte[]> e : files.entrySet()) {
+            byte[] header=new byte[512];
+            byte[] name=e.getKey().getBytes(StandardCharsets.US_ASCII);
+            System.arraycopy(name,0,header,0,Math.min(name.length,100));
+            byte[] size=String.format("%011o",e.getValue().length).getBytes(StandardCharsets.US_ASCII);
+            System.arraycopy(size,0,header,124,Math.min(size.length,11));
+            header[156]=(byte)'0';
+            System.arraycopy("ustar\0".getBytes(StandardCharsets.US_ASCII),0,header,257,6);
+            for (int i=148;i<156;i++) header[i]=32;
+            long sum=0; for (byte b : header) sum+=b&0xFF;
+            byte[] check=String.format("%06o\0 ",sum).getBytes(StandardCharsets.US_ASCII);
+            System.arraycopy(check,0,header,148,8);
+            out.write(header); out.write(e.getValue());
+            out.write(new byte[(512-e.getValue().length%512)%512]);
+        }
+        out.write(new byte[1024]);
+        return out.toByteArray();
+    }
     public static void main(String[] args) throws Exception {
         Note n=new Note(); n.title="Test: \"quotes\"\nNew line"; n.body="# Heading\n\n- [ ] task\n日本語 😀\n---\n";
         n.category="Personal"; n.tags="one, two words"; n.todo=true; n.done=true;
@@ -139,6 +164,39 @@ public final class NotesTest {
         check(resolved.body.contains("data:image/png;base64,AQID"),"ZIP resources resolve Joplin image IDs");
         check(resolved.body.contains(":/42ffc43de46b42d19dfb84b2b270c18b"),"unmatched links preserved");
         fails(() -> MarkdownNotes.importZip(new ByteArrayInputStream(archive("../bad.png",new byte[]{1}))),"unsafe image archive path rejected");
+        String folder="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", note="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", tag="cccccccccccccccccccccccccccccccc";
+        String resource="2d89393057e74743bc1354b6b045e315";
+        byte[] png=new byte[]{(byte)0x89,'P','N','G',13,10,26,10,1,2,3,4};
+        Map<String,byte[]> jex=new LinkedHashMap<>();
+        jex.put(folder+".md",raw("Work","", "id: "+folder, "parent_id: ", "type_: 2").getBytes(StandardCharsets.UTF_8));
+        jex.put(note+".md",raw("Shopping","- [ ] milk\n\n![Diagram](:/"+resource+")",
+            "id: "+note, "parent_id: "+folder, "created_time: 2021-05-01T16:40:00.000Z",
+            "updated_time: 2021-06-17T23:59:00.000Z", "user_created_time: 2021-05-01T16:40:00.000Z",
+            "user_updated_time: 2021-06-17T23:59:00.000Z", "is_todo: 1", "todo_completed: 0", "type_: 1").getBytes(StandardCharsets.UTF_8));
+        jex.put(tag+".md",raw("groceries","", "id: "+tag, "type_: 5").getBytes(StandardCharsets.UTF_8));
+        jex.put("dddddddddddddddddddddddddddddddd.md",raw("","", "id: dddddddddddddddddddddddddddddddd", "note_id: "+note, "tag_id: "+tag, "type_: 6").getBytes(StandardCharsets.UTF_8));
+        jex.put(resource+".md",raw("diagram.png","", "id: "+resource, "mime: image/png", "file_extension: png", "type_: 4").getBytes(StandardCharsets.UTF_8));
+        jex.put("resources/"+resource+".png",png);
+        jex.put("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.md",raw("Secret","hidden", "id: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "encryption_applied: 1", "type_: 1").getBytes(StandardCharsets.UTF_8));
+        jex.put("ffffffffffffffffffffffffffffffff.md",raw("Old","gone", "id: ffffffffffffffffffffffffffffffff", "deleted_time: 1712345678901", "type_: 1").getBytes(StandardCharsets.UTF_8));
+        List<Note> jexNotes=JexNotes.importJex(new ByteArrayInputStream(tar(jex)));
+        check(jexNotes.size()==1,"JEX imports notes, skips encrypted and trashed");
+        Note jn=jexNotes.get(0);
+        check(jn.title.equals("Shopping"),"JEX note title");
+        check(jn.category.equals("Work"),"JEX folder becomes category");
+        check(jn.tags.equals("groceries"),"JEX tag association");
+        check(jn.todo && !jn.done,"JEX to-do flag");
+        check(jn.created==Instant.parse("2021-05-01T16:40:00Z").toEpochMilli(),"JEX user timestamps");
+        check(jn.body.contains("data:image/png;base64,"),"JEX image resource embedded");
+        check(Tags.filterNew(jexNotes,JexNotes.importJex(new ByteArrayInputStream(tar(jex)))).isEmpty(),"JEX re-import is a duplicate");
+        Map<String,byte[]> nested=new LinkedHashMap<>();
+        nested.put("11111111111111111111111111111111.md",raw("Root","","id: 11111111111111111111111111111111","parent_id: ","type_: 2").getBytes(StandardCharsets.UTF_8));
+        nested.put("22222222222222222222222222222222.md",raw("Child","","id: 22222222222222222222222222222222","parent_id: 11111111111111111111111111111111","type_: 2").getBytes(StandardCharsets.UTF_8));
+        nested.put("33333333333333333333333333333333.md",raw("Deep","body","id: 33333333333333333333333333333333","parent_id: 22222222222222222222222222222222","type_: 1").getBytes(StandardCharsets.UTF_8));
+        check(JexNotes.importJex(new ByteArrayInputStream(tar(nested))).get(0).category.equals("Root/Child"),"JEX nested folders join path");
+        fails(() -> JexNotes.importJex(new ByteArrayInputStream(tar(Collections.singletonMap("../evil.md",raw("E","b","id: 44444444444444444444444444444444","type_: 1").getBytes(StandardCharsets.UTF_8))))),"JEX traversal entry rejected");
+        fails(() -> JexNotes.importJex(new ByteArrayInputStream("not a tar at all............................".getBytes(StandardCharsets.UTF_8))),"non-tar rejected");
+        fails(() -> JexNotes.importJex(new ByteArrayInputStream(tar(Collections.singletonMap("empty.md","# no props\n".getBytes(StandardCharsets.UTF_8))))),"JEX entry without metadata rejected");
         check(Tags.parse(" work, HOME ,,Work ").size()==2,"tag parse trims and dedups case-insensitively");
         check(Tags.format(Arrays.asList("b","a","b")).equals("b, a"),"tag format preserves order without duplicates");
         check(Tags.filter(Arrays.asList("Work","Home","hobby"),"ho").equals(Arrays.asList("hobby","Home")),"tag search filters case-insensitively");

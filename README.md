@@ -30,7 +30,7 @@ The watch and phone builds share a package ID and signing key so Google Wear OS 
 
 The phone displays Markdown in WebView. The watch uses a **native TextView/Html preview**, so it works on Wear OS watches without a WebView provider. The watch converts tables into readable rows and loads up to four small/downsampled images per preview in a background task (2500 ms network timeouts and a 256 KB limit for each downloaded image). When an image is unavailable it remains a placeholder; use **Hide images** to show text without downloads. Both long-press and a visible button can toggle watch images.
 
-The editor works with Markdown source and offers a rendered preview. KaTeX math, Mermaid/ABC diagrams, interactive task completion in the preview, arbitrary Joplin desktop plugins, large/binary attachment syncing, reminders, encryption, Joplin server synchronization, and JEX are not implemented. Their original Markdown source remains editable; fenced plugin blocks display as code.
+The editor works with Markdown source and offers a rendered preview. KaTeX math, Mermaid/ABC diagrams, interactive task completion in the preview, arbitrary Joplin desktop plugins, large/binary attachment syncing, reminders, encryption, and Joplin server synchronization are not implemented. Their original Markdown source remains editable; fenced plugin blocks display as code.
 
 ## Build
 
@@ -95,12 +95,16 @@ When shared HTML `<img src=":/…">` also has a public HTTPS `srcset`, preview u
 
 Preview follows Joplin's [Markdown guide](https://joplinapp.org/help/apps/markdown/) and [CommonMark](https://spec.commonmark.org/) for headings, paragraphs/hard line breaks, emphasis, nested ordered/unordered lists, checked/unchecked task items, quotes, links/autolinks, indented/fenced code, horizontal rules and tables; it also supports strikethrough, footnotes, `==highlight==`, and `[[toc]]`/`[toc]` contents links. Shared inline HTML is sanitized before WebView display. Links to other Joplin notes (`:/ID`) are retained in source but cannot open inside Watch Notes unless the target is separately imported.
 
+### JEX export file
+
+In Joplin desktop, choose **Export → JEX - Joplin Export File** and move the `.jex` file to your phone. In Watch Notes, choose **Files & backups → Import Markdown / ZIP / JEX / database**. Folders become categories (nested notebooks are joined with `/`), tag associations are imported, and small image resources are embedded in the notes so they sync to the watch. Encrypted notes (which cannot be decrypted here) and trashed notes are skipped. JEX imports allow up to 3,000 entries with the same 16 MiB text and duplicate-skipping rules as Markdown imports. There is no JEX export; use the Markdown ZIP below to move notes back to Joplin.
+
 ### Exported Markdown
 
 1. In Joplin desktop, export notes/notebooks as **MD - Markdown + Front Matter**.
 2. ZIP the **contents** of the exported directory, preserving notebook subdirectories, or select an individual `.md` file.
 3. Move the ZIP/Markdown file to your phone.
-4. In Watch Notes, choose **Files & backups → Import Markdown / ZIP / database**.
+4. In Watch Notes, choose **Files & backups → Import Markdown / ZIP / JEX / database**.
 5. Choose **Sync now** to send the imported notes to the watch.
 
 Supported Joplin metadata: title, creation/update dates, tags and to-do completion (`completed?: yes/no`). Notebook categories are inferred from directory paths; a Watch Notes `notebook` front-matter field preserves categories on its own round trips. Dates without a zone are interpreted as UTC. Extra Joplin metadata (author, location, source URL and due date) is ignored. Other linked attachments are not imported or rewritten, so references can remain unresolved. Importing the same Markdown twice creates duplicates; Markdown is an interchange format, not an identity-preserving synchronization protocol.
@@ -130,6 +134,6 @@ adb install -r -t build/watch-notes-tests.apk
 adb shell am instrument -w dev.watchnotes.tests/dev.watchnotes.StoreInstrumentation
 ```
 
-The JVM suite covers wire validation, revision ordering, Joplin front-matter and Android shared-text examples (including ID + title), CommonMark/extensions and HTML sanitization, image `srcset` fallback/visibility, Markdown/ZIP round trips, ZIP image resource resolution and import bounds. Instrumentation additionally exercises Android's native watch-preview rendering with images on/off (without constructing a WebView), as well as SQLite saves, outbox state, duplicate delivery, concurrent-edit convergence, deletion/restoration, transactional rollback, database snapshots and backup merging. It uses isolated test databases.
+The JVM suite covers wire validation, revision ordering, Joplin front-matter and Android shared-text examples (including ID + title), CommonMark/extensions and HTML sanitization, image `srcset` fallback/visibility, Markdown/ZIP round trips, ZIP image resource resolution, JEX tar parsing with folder/tag/resource mapping and import bounds. Instrumentation additionally exercises Android's native watch-preview rendering with images on/off (without constructing a WebView), as well as SQLite saves, outbox state, duplicate delivery, concurrent-edit convergence, deletion/restoration, transactional rollback, database snapshots and backup merging. It uses isolated test databases.
 
 Both application APKs have been built, signature-verified and alignment-checked in this environment. JVM tests pass. Device instrumentation and paired-device UI/transport checks require working ADB and real devices; these have not been run here. Check typing/back/rotation, both swipe directions, offline concurrent edits, reconnect/retry, Joplin desktop import, and watch-database reception on your pair before relying on the app for important notes.

@@ -431,7 +431,7 @@ public final class NotesActivity extends Activity {
         try {
             android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
             return "Watch Notes v" + info.versionName + " (" + info.versionCode + ")";
-        } catch (Exception e) { return "Watch Notes v1.3 (4)"; }
+        } catch (Exception e) { return "Watch Notes v1.4 (5)"; }
     }
     private void files() {
         screen="files"; base("Files & backups");
@@ -443,11 +443,11 @@ public final class NotesActivity extends Activity {
             if (!new File(getFilesDir(), "watch-notes.db").exists()) { message("On watch, select Send database to phone, then Sync now here."); return; }
             createFile("watchdb", "application/vnd.sqlite3", "watch-notes.db");
         });
-        button("Import Markdown / ZIP / database", () -> {
+        button("Import Markdown / ZIP / JEX / database", () -> {
             Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE);
             try { startActivityForResult(pick, 10); } catch (ActivityNotFoundException e) { message("No file picker. Import on the phone, then sync."); }
         });
-        text("Joplin: export Markdown + Front Matter, zip the exported folder, and import here. To import into Joplin, unzip our export and choose Markdown + Front Matter (Directory). Attachments and JEX are not supported.");
+        text("Joplin: import a JEX export directly, or export Markdown + Front Matter, zip the exported folder, and import here. To import into Joplin, unzip our export and choose Markdown + Front Matter (Directory). Non-image attachments are not supported.");
         button("Back", this::library);
     }
     private void createFile(String kind, String mime, String name) {
@@ -492,8 +492,9 @@ public final class NotesActivity extends Activity {
                     } finally { tmp.delete(); }
                 }
                 else if (name.toLowerCase(Locale.ROOT).endsWith(".zip")) { notes=MarkdownNotes.importZip(in); markdown=true; }
+                else if (name.toLowerCase(Locale.ROOT).endsWith(".jex")) { notes=JexNotes.importJex(in); markdown=true; }
                 else if (name.toLowerCase(Locale.ROOT).matches(".*\\.(md|markdown|txt)$")) { notes=Collections.singletonList(MarkdownNotes.decode(new String(NotesSync.read(in,1500000),StandardCharsets.UTF_8),name)); markdown=true; }
-                else throw new IOException("Choose .md, .txt, .zip or a Watch Notes .db file (JEX is not supported)");
+                else throw new IOException("Choose .md, .txt, .zip, .jex or a Watch Notes .db file");
             }
             try (NotesStore store=new NotesStore(this)) {
                 if (markdown) {
